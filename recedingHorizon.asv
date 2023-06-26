@@ -1,0 +1,38 @@
+%Receding Horizon Code for the MDP Toy Problem
+
+function [StateSpace, horizonValue] = recedingHorizon(position, Val, V, Q, L, C, D)
+AvgDpC = 2;
+STD = 1;
+
+Sz = size(V, 1);
+
+%Create Matrix W to show which landing spots whould be considered
+for i=1:1:Sz
+    prob = prob_Drone_Distance(V(position,i), AvgDpC, STD, goal1, goal2);
+    if prob > 0.2
+        W(i) = 1;
+    else
+        W(i) = 0;
+    end
+end
+
+a = 1;
+b = 1;
+for i=1:1:2
+    for j=1:1:2
+        for k=1:1:L
+            for m=1:1:C
+                for n=1:1:D
+                    if W(k) == 1
+                        StateSpace(b) = Q(a);
+                        horizonValue(b) = Val(a);
+                        b = b + 1;
+                    end
+                    a = a + 1;
+                end
+            end
+        end
+    end
+end
+
+end

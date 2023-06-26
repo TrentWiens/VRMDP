@@ -1,0 +1,240 @@
+%split the state space where it is needed
+
+function [splitValue, splitStateSpace, locSplitStates] = splitter(horizonValue, splitSpots)
+
+    %% initilize variables 
+    locSpots = splitSpots{1}; %get the spots from 
+    chargeSpots = splitSpots{2};
+    daySpots = splitSpots{3};
+
+    locStates = size(horizonValue, 3); %find the amount of states per value
+    chargeStates = size(horizonValue, 1);
+    dayStates = size(horizonValue, 2);
+
+    %% split locations
+    locSplitStates = [];
+
+    %find out if the locations need to be split horizontally, vertically or
+    %both - horizontally is adding columns, vertically is adding rows
+    splitVert = false;
+    splitHoriz = false;
+    for i = 1:locStates
+        for j = 1:size(locSpots,1) %check all other locations
+            if locSpots(j,2,1) == i && locSpots(j,1,1) == i + 1 && locSpots(j,1,2) == 1 %if the two locations are adjacent and the difference is large enough
+                splitHoriz = true;
+            elseif locSpots(j,1,2) == 1 && locSpots(j,1,1) ~= i + 1 && locSpots(j,2,1) == i
+                splitVert = true;
+            end
+        end
+    end
+
+    %make map of the area
+    sideLen = sqrt(locStates); %get the side length
+    map = 1:locStates; %create the space
+    map = transpose(reshape(map,sideLen,sideLen)); %change to matrix instead of vector
+    mapExpTemp = []; %initialize matrices
+    mapExp = [];
+
+    if splitVert && splitHoriz %if splitting horizontally and vertically
+        for i = 1:sideLen-1 %for each gap
+            newRow = [map(i,:);zeros(1,size(map,2))]; %make new rows, from the map and a row of zeros
+            mapExpTemp = [mapExpTemp; newRow]; %add to temp matrix
+        end
+        mapExpTemp = [mapExpTemp;map(end,:)]; %get the last row of the matrix
+        for i = 1:sideLen-1 %for each gap
+            newCol = [mapExpTemp(:,i),zeros(size(mapExpTemp,1),1)]; %make new cols, from the temp map and a col of zeros
+            mapExp = [mapExp,newCol]; %add to expanded map
+        end
+        mapExp = [mapExp,mapExpTemp(:,end)]; %get the last col of temporary map
+        locSplitStates = reshape(mapExp',1,[]); %reshape to vector 
+    elseif splitVert %if only splitting vertically
+        for i = 1:sideLen-1 %for each gap
+            newRow = [map(i,:);zeros(1,size(map,2))]; %make new rows, from map and a row of zeros
+            mapExp = [mapExp; newRow]; %add to expanded map
+        end
+        mapExp = [mapExp;map(end,:)]; %get the last row for the expanded map
+        locSplitStates = reshape(mapExp',1,[]); %reshape to vector
+    elseif splitHoriz %if only splitting horizontally
+        for i = 1:sideLen-1 %for each gap
+            newCol = [map(:,i),zeros(size(map,1),1)]; %make new cols, from map and a col of zeros
+            mapExp = [mapExp,newCol]; %add to expanded map
+        end
+        mapExp = [mapExp,map(:,end)]; %get the last col for the expanded map
+        locSplitStates = reshape(mapExp',1,[]); %reshape to vector
+    else
+        locSplitStates = 1:locStates; %no zeros are needed if not splitting locations
+    end
+
+    locStates = length(locSplitStates); %find the new amount of locations
+    
+    %% split charge 
+    chargeSplitStates = zeros(1,1,1);
+
+    %check where the charge needs to be split - this can be at any of the
+    %locations, if any of them need to be split, they all have to be split
+    for i = 1:chargeStates-1 %for the charge states minus 1 - the difference between each state
+        spot1 = chargeSpots(i,:,:) == 1; %check if chargeSpots is one in any of states
+        if any(any(spot1)) %if any of the chargeSpots is 1
+            chargeSpots2(i) = 1; %set chargeSpots2 to 1
+        else
+            chargeSpots2(i) = 0; %or 0
+        end
+    end
+
+
+    %get the dimensions of the split states
+    a = 1; %split space counter
+    b = 1; %chargeSpots2 counter
+    c = 1; %state space counter
+    for k = 1:chargeStates %through all charge states
+        chargeSplitStates(a) = c; %set to state space counter
+        a = a + 1; %increase split space counter
+        c = c + 1; %increase state space counter
+        if b < chargeStates && chargeSpots2(b) == 1 %check splitValueGradient condition
+            chargeSplitStates(a) = 0; %set to zero 
+            a = a + 1; %increase split state counter - do not increase state space counter
+        end
+        b = b + 1; %increase chargeSpots2 counter
+    end
+    
+    chargeStates = length(chargeSplitStates); %get the new amount of charge states
+
+    %% split day
+    daySplitStates = zeros(1,1,1);
+
+    for i = 1:dayStates - 1 %for the day states minus 1 - the difference between each state
+        spot1 = daySpots(:,i,:) == 1; %check if daySpots is 1 in any of the states
+        if any(any(spot1)) %if any of the daySpots is 1
+            daySpots2(i) = 1; %set daySpots2 to 1
+        else
+            daySpots2(i) = 0; %or 0
+        end
+    end
+
+    %get the dimensions of the day states
+    a = 1; %split space counter
+    b = 1; %daySpots2 counter
+    c = 1; %state space counter
+    for k = 1:dayStates %through all day states
+        daySplitStates(a) = c; %set to state space counter
+        a = a + 1; %increase split space counter
+        c = c + 1; %increase state space counter
+        if b < dayStates && daySpots2(b) == 1 %check splitValueGradient condition
+            daySplitStates(a) = 0; %set to zero 
+            a = a + 1; %increase split state counter - do not increase state space counter
+        end
+        b = b + 1; %increase daySpots2 counter
+    end
+    
+    dayStates = length(daySplitStates);
+
+    %% create the new split state space
+    splitStateSpace = zeros(1,1,1);
+
+    a = 1;
+    for i = 1:locStates
+        for j = 1:chargeStates
+            for k = 1:dayStates
+                splitStateSpace(j,k,i) = a;
+                a = a + 1;
+            end
+        end
+    end
+
+    %% create value state space
+    splitValue = zeros(chargeStates,dayStates,locStates);
+
+    %get all the values for the states where we know the values - this is
+    %is just the values of the states that are preserved and newly created
+    %from the split
+
+    z = 1; %horizonValue location counter
+    for i = 1:locStates %for each location state 
+        if locSplitStates(i) ~= 0 %if the state is not a split state
+            x = 1; %horizonValue charge counter
+            for j = 1:chargeStates %for each charge state
+                if chargeSplitStates(j) ~= 0 %if the state is not a split state
+                    y = 1; %horizonValue day counter
+                    for k = 1:dayStates %for each day state 
+                        if daySplitStates(k) ~= 0 %if it is not a split state
+                            splitValue(j,k,i) = horizonValue(x,y,z); %set the splitValue to the horizonValue from the MDP solver
+                            y = y + 1; %increase horizonValue day counter
+                        else
+                            splitValue(j,k,i) = 0; %otherwise, set to zero
+                        end
+                    end
+                    x = x + 1; %increase horizonValue charge counter
+                else
+                    splitValue(j,k,i) = 0; %othewise, set to zero
+                end
+            end 
+            z = z + 1; %increase horizonValue day counter
+        else
+            splitValue(chargeStates, dayStates, i) = 0; %set the whole state to zero
+        end
+    end
+
+    %% get values for the split states
+
+    failIndices = {}; %failed indices array
+    emptyLocs = []; %full empty locations
+    
+    a = 1; %failed indices counter
+    b = 1; %empty location counter
+    for i = 1:locStates %for each location
+        if sum(sum(splitValue(:,:,i))) > 0 %if the location is not empty already (meaning it is a new split location)
+            for j = 1:chargeStates %for each charge state
+                for k = 1:dayStates %for each day state
+                    if splitValue(j,k,i) == 0 %if the value is 0
+                        if j > 1 && j < chargeStates && splitValue(j+1,k,i) ~= 0 && splitValue(j-1,k,i) ~= 0 %if the surrounding values are not zero and in bounds 
+                            splitValue(j,k,i) = (splitValue(j+1,k,i) + splitValue(j-1,k,i))/2; %replace the zero with the average of the surrounding values
+                        elseif k > 1 && k < dayStates && splitValue(j,k-1,i) ~= 0 && splitValue(j,k+1,i) ~= 0 %check other direction for numbers to average
+                            splitValue(j,k,i) = (splitValue(j,k-1,i) + splitValue(j,k+1,i))/2; %average again
+                        else 
+                            failIndices{a} = [j,k,i]; %get all the indices that have zeros surrounding it
+                            a = a + 1; %increment fail indices counter
+                        end
+                    end
+                end
+            end
+        else
+            emptyLocs(b) = i; %see which locations are empty 
+            b = b + 1; %increment empty location counter
+        end
+    end
+
+    if ~isempty(failIndices) %if there are any fail indices
+        for o = 1:length(failIndices) %loop over all the indices
+            failedIndex = failIndices{o};  %get the failed index
+            index1 = failedIndex(1); %get the specific numbers of the index
+            index2 = failedIndex(2);
+            index3 = failedIndex(3);
+            splitValue(index1, index2, index3) = (splitValue(index1 + 1, index2, index3) + splitValue(index1-1,index2,index3))/2; %set the index to the average of the surrounding values
+        end
+    end
+
+    if ~isempty(emptyLocs) %if there are any empty locations
+        for l = 1:length(emptyLocs) %for each empty location
+            emptyLoc = emptyLocs(l);
+            loc1 = emptyLoc - 1;
+            loc2 = emptyLoc + 1;
+            if any(ismember(loc1,emptyLocs)) || any(ismember(loc2,emptyLocs))
+                while any(ismember(loc1,emptyLocs)) && loc1 > 1
+                    loc1 = loc1 - 1;
+                end
+                while any(ismember(loc2, emptyLocs)) && loc2 < locStates
+                    loc2 = loc2 + 1;
+                end
+            end
+            if loc1 < 1
+                loc1 = 1;
+            elseif loc2 > locStates
+                loc2 = locStates;
+            end
+
+            splitValue(:,:,emptyLoc) = (splitValue(:,:,loc1) + splitValue(:,:,loc2))./2; %get the average of the surrounding locations - you cannnot split on the edges
+            emptyLocs(l) = 0;
+        end
+    end
+
+end
